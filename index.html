@@ -1,0 +1,119 @@
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Fractal image generation</title>
+		<style>
+			html, body {
+				margin: 0;
+				padding: 0;
+				background: black;
+			}
+			body {
+				display: grid;
+			}
+			canvas {
+				align-self: center;
+				justify-self: center;
+			}
+		</style>
+		<script>
+			'use strict'
+			let urlSearchParams = new URLSearchParams(window.location.search);
+
+			// Settings
+			var corners = parseInt(urlSearchParams.get("corners") ?? 5);
+			var colorStep = parseInt(urlSearchParams.get("colorStep") ?? -1);
+			var cornerPlacement = parseInt(urlSearchParams.get("cornerPlacement") ?? 0);
+
+			// Elements
+			var canvasContext;
+
+			// Variables
+			var x;
+			var y;
+			let frameSize;
+
+			// Generation
+			function onload(){
+				frameSize = document.body.offsetHeight;
+				// Secure settings
+				corners = corners < 2 ? 2 : Math.floor(corners);
+				colorStep = colorStep < 1 ? 1 : colorStep;
+				cornerPlacement = cornerPlacement < 0 ? 0 : Math.floor(cornerPlacement);	// 0: Even, 1: Random pos, 2: Random angle
+				// Set elements
+				var canvas = document.getElementById('canvas');
+				canvas.width = frameSize;
+				canvas.height = frameSize;
+				canvasContext = canvas.getContext('2d');
+				canvasContext.fillStyle = 'rgba(0, 0, 0, 255)';
+				canvasContext.fillRect(0, 0, frameSize, frameSize);
+				// Start worker
+				if(window.Worker){
+					var worker = new Worker("worker.js");
+					worker.postMessage({
+						corners: getCorners(corners),
+						imageData: canvasContext.getImageData(0, 0, frameSize, frameSize),
+						colorStep: colorStep,
+						frameSize: frameSize
+					});
+					worker.onmessage = function(e){
+						canvasContext.putImageData(e.data, 0, 0);
+						window.requestAnimationFrame(()=>{worker.postMessage(null)});
+					};
+					worker.postMessage(null);
+				}else{
+					document.body.innerHTML = 'No support for Web Workers.<br>' + document.body.innerHTML;
+				}
+			}
+			function getCorners(numberOfCorners){
+				let cornerList = [];
+				let imageSizeHalf = Math.floor(frameSize/2);
+				switch(cornerPlacement){
+					default:	// 0: Even
+						var cornerAngle = (Math.PI*2) / numberOfCorners;
+						var center = frameSize/2;
+						for(var index = 0; index < numberOfCorners; index++){
+							var dir = cornerAngle * index;
+							var x = Math.sin(dir)*imageSizeHalf + center;
+							var y = -Math.cos(dir)*imageSizeHalf + center;
+							cornerList.push({x: x, y: y});
+						}
+						break;
+					case 1:	// Random pos
+						for(var index = 0; index < numberOfCorners; index++){
+							var x = Math.floor(Math.random() * frameSize);
+							var y = Math.floor(Math.random() * frameSize);
+							cornerList.push({x: x, y: y});
+						}
+						break;
+					case 2:	// Random angle
+						var center = frameSize/2;
+						for(var index = 0; index < numberOfCorners; index++){
+							var dir = Math.random() * Math.PI*2;
+							var x = Math.sin(dir)*imageSizeHalf + center;
+							var y = -Math.cos(dir)*imageSizeHalf + center;
+							cornerList.push({x: x, y: y});
+						}
+						break;
+				}
+				let largest_x = 0;
+				let largest_y = 0;
+				cornerList.forEach(c => {
+					largest_x = Math.max(largest_x, c.x);
+					largest_y = Math.max(largest_y, c.y);
+				});
+				let ratio = Math.floor(1+(frameSize-largest_x)/frameSize);
+				cornerList.forEach(corner => {
+					corner.x *= ratio * (corner.x < imageSizeHalf ? 1 : -1);
+					corner.x -= frameSize-largest_x;
+					corner.y *= ratio;
+					corner.y += (frameSize-largest_y)/2;
+				});
+				return cornerList;
+			}
+		</script>
+	</head>
+	<body onload="onload()">
+		<canvas id="canvas"></canvas>
+	</body>
+</html>
