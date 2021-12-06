@@ -21,9 +21,9 @@
 			let urlSearchParams = new URLSearchParams(window.location.search);
 
 			// Settings
-			var corners = parseInt(urlSearchParams.get("corners") ?? 5);
-			var colorStep = parseInt(urlSearchParams.get("colorStep") ?? -1);
-			var cornerPlacement = parseInt(urlSearchParams.get("cornerPlacement") ?? 0);
+			var corners = parseInt(urlSearchParams.get('corners') ?? -1);
+			var colorStep = parseInt(urlSearchParams.get('colorStep') ?? -1);
+			var cornerPlacement = parseInt(urlSearchParams.get('cornerPlacement') ?? -1);
 
 			// Elements
 			var canvasContext;
@@ -37,8 +37,8 @@
 			function onload(){
 				frameSize = document.body.offsetHeight;
 				// Secure settings
-				corners = corners < 2 ? 2 : Math.floor(corners);
-				colorStep = colorStep < 1 ? 1 : colorStep;
+				corners = corners < 3 ? 3 : Math.floor(corners);
+				colorStep = colorStep < 1 ? 100 : colorStep;
 				cornerPlacement = cornerPlacement < 0 ? 0 : Math.floor(cornerPlacement);	// 0: Even, 1: Random pos, 2: Random angle
 				// Set elements
 				var canvas = document.getElementById('canvas');
@@ -49,7 +49,7 @@
 				canvasContext.fillRect(0, 0, frameSize, frameSize);
 				// Start worker
 				if(window.Worker){
-					var worker = new Worker("worker.js");
+					var worker = new Worker('worker.js');
 					worker.postMessage({
 						corners: getCorners(corners),
 						imageData: canvasContext.getImageData(0, 0, frameSize, frameSize),
@@ -98,14 +98,15 @@
 				}
 				let largest_x = 0;
 				let largest_y = 0;
-				cornerList.forEach(c => {
-					largest_x = Math.max(largest_x, c.x);
-					largest_y = Math.max(largest_y, c.y);
-				});
-				let ratio = Math.floor(1+(frameSize-largest_x)/frameSize);
 				cornerList.forEach(corner => {
-					corner.x *= ratio * (corner.x < imageSizeHalf ? 1 : -1);
-					corner.x -= frameSize-largest_x;
+					corner.x -= imageSizeHalf;
+					largest_x = Math.max(largest_x, corner.x);
+					largest_y = Math.max(largest_y, corner.y);
+				});
+				let ratio = 1+(imageSizeHalf-largest_x)/imageSizeHalf;
+				cornerList.forEach(corner => {
+					corner.x *= ratio;
+					corner.x += imageSizeHalf;
 					corner.y *= ratio;
 					corner.y += (frameSize-largest_y)/2;
 				});
