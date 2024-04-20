@@ -3,22 +3,26 @@ const frame = [];
 let max = 0;
 let x;
 let y;
-let loops = 1;
-const t = 1000/60;
+let loops = 0;
+const timeThreshold = 1000/60;
+let multiplier = 10000;
 this.onmessage = messageEvent => {
 	function update(){
 		let l = loops;
 		const start = Date.now();
 		while(l--){
 			const corner = corners[Math.floor(Math.random() * corners.length)];
-			x = Math.floor((x - corner.x)/2 + corner.x);
-			y = Math.floor((y - corner.y)/2 + corner.y);
-			const n = ++frame[y][x];
-			max = Math.max(max, n);
+			x = Math.floor((corner.x - x)/2 + x);
+			y = Math.floor((corner.y - y)/2 + y);
+			max = Math.max(max, ++frame[y][x]);
 		}
 		const duration = Date.now()-start;
-		loops -= Math.sign(duration - t);
-		loops = Math.max(1, loops)
+		const change = Math.sign(duration - timeThreshold)*multiplier;
+		loops -= change;
+		if(multiplier != 1 && 0 < change){
+			multiplier = Math.max(1, multiplier/10);
+		}
+		loops = Math.max(1, loops);
 		setTimeout(update, 0);
 	}
 	this.onmessage = ()=>{

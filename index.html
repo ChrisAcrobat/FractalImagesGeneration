@@ -2,12 +2,13 @@
 <html>
 	<head>
 		<meta charset="UTF-8">
+		<meta content="width=device-width, initial-scale=1.0" name="viewport">
+		<meta content="yes" name="mobile-web-app-capable">
 		<title>Fractal image generation</title>
 		<style>
 			html, body {
 				margin: 0;
 				padding: 0;
-				background: black;
 			}
 			body {
 				display: grid;
@@ -34,14 +35,44 @@
 		<script>
 			'use strict'
 			const urlSearchParams = new URLSearchParams(window.location.search);
-			const corners = Math.max(3, parseInt(urlSearchParams.get('corners') ?? -1));
-			const cornerPlacement = Math.max(0, parseInt(urlSearchParams.get('cornerPlacement') ?? -1));	// 0: Even, 1: Random pos, 2: Random angle
-
+			const corners = (()=>{
+				const c = urlSearchParams.get('corners');
+				if(c){
+					if(c.includes(',')){
+						return c;
+					}
+					return Math.max(3, parseInt(c ?? -1));
+				}
+				return 3;
+			})();
+			const cornerPlacement = urlSearchParams.get('cornerPlacement') ?? 'even';
+			if(window.location.search === ''){
+				window.location.search = 'corners='+(localStorage.getItem('corners') ?? corners)+'&cornerPlacement='+(localStorage.getItem('cornerPlacement') ?? cornerPlacement);
+			}
 			let x, y;
 			function inputChange(event){
+				if(event){
+					localStorage.setItem('backgroundColor', event.value);
+					document.body.style.backgroundColor = event.value;
+				}
 				[...heatMode.selectedOptions].forEach(o => {
 					localStorage.setItem('heatMode', o.value);
 				});
+				localStorage.setItem('cbxInverted', cbxInverted.checked);
+			}
+			function reloadChange(){
+				const numCorners = document.getElementById('numCorners');
+				const selectCornerPlacement = document.getElementById('cornerPlacement');
+				let cornerPlacement;
+				[...selectCornerPlacement.selectedOptions].forEach(o => {
+					cornerPlacement = o.value;
+				});
+				if(!cornerPlacement){
+					cornerPlacement = 'even';
+				}
+				localStorage.setItem('cornerPlacement', cornerPlacement);
+				localStorage.setItem('corners', numCorners.value);
+				window.location.search = 'corners='+numCorners.value+'&cornerPlacement='+cornerPlacement;
 			}
 			function hslToRgb(h, s, l){ // Source: https://github.com/optimisme/javascript-temperatureMap/blob/ba64de1931b5c33bbc0171629364ae9ec06dc97c/temperatureMap.js#L57
 				let r, g, b, hue2rgb, q, p;
@@ -79,10 +110,20 @@
 				canvas.height = frameSize;
 				const canvasContext = canvas.getContext('2d');
 				const imageData = canvasContext.getImageData(0, 0, frameSize, frameSize);
+				const numCorners = document.getElementById('numCorners');
+				const selectCornerPlacement = document.getElementById('cornerPlacement');
+				const cbxInverted = document.getElementById('cbxInverted');
+				const backgroundColorSelector = document.getElementById('colorBackground');
 				const heatMode = document.getElementById('heatMode');
+				numCorners.value = corners.split ? corners.split(',').length : corners;
+				[...selectCornerPlacement.options].forEach(o => {
+					o.selected = localStorage.getItem('cornerPlacement') === o.value;
+				});
 				[...heatMode.options].forEach(o => {
 					o.selected = localStorage.getItem('heatMode') === o.value;
 				});
+				cbxInverted.checked = localStorage.getItem('cbxInverted') === 'true';
+				document.body.style.backgroundColor = backgroundColorSelector.value = localStorage.getItem('backgroundColor') ?? '#000000';
 				if(window.Worker){
 					const worker = new Worker('worker.js');
 					worker.postMessage({
@@ -98,27 +139,51 @@
 						});
 						const diff = e.data.max - min;
 						if(diff){
+							const inverted = cbxInverted.checked;
+							let rgb;
 							e.data.imageData.forEach((i, index) => {
 								index *= 4;
-								const ratio = i ? (i-min)/diff : 0;
+								let ratio = i ? (i-min)/diff : 0;
 								[...heatMode.selectedOptions].forEach(o => {
 									switch(o.value){
-										case 'spectrum':
-											const rgb = hslToRgb(ratio, 1, .5);
+										default:
+										case 'heatmap7':
+											if(ratio < 1/7){
+												ratio /= 1/7;
+												rgb = [255*ratio, 0, 0];
+											}else if(6/7 <= ratio){
+												ratio = Math.abs(ratio-1);
+												ratio /= 1/7;
+												rgb = [255*ratio, 255*ratio, 255];
+											}else{
+												ratio = (ratio - 1/7)/(5/7);
+												rgb = hslToRgb(ratio, 1, .5);
+											}
 											imageData.data[index] = rgb[0];
 											imageData.data[index+1] = rgb[1];
 											imageData.data[index+2] = rgb[2];
 											break;
-										case 'white':
+										case 'heatmap5':
+											rgb = hslToRgb(ratio, 1, .5);
+											imageData.data[index] = rgb[0];
+											imageData.data[index+1] = rgb[1];
+											imageData.data[index+2] = rgb[2];
+											break;
+										case 'grayscale':
 											imageData.data[index] =
 											imageData.data[index+1] =
 											imageData.data[index+2] = Math.round(ratio*255);
 											break;
-										case 'black':
+										case 'mono':
 											imageData.data[index] =
 											imageData.data[index+1] =
-											imageData.data[index+2] = 255-Math.round(ratio*255);
+											imageData.data[index+2] = ratio ? 255 : 0;
 											break;
+									}
+									if(inverted){
+										imageData.data[index] = 255-imageData.data[index];
+										imageData.data[index+1] = 255-imageData.data[index+1];
+										imageData.data[index+2] = 255-imageData.data[index+2];
 									}
 								});
 								imageData.data[index+3] = i ? 255 : 0;
@@ -132,35 +197,62 @@
 				}
 			}
 			function getCorners(numberOfCorners, frameSize){
-				let cornerList = [];
-				let imageSizeHalf = Math.floor(frameSize/2);
-				switch(cornerPlacement){
-					default:	// 0: Even
-						var cornerAngle = (Math.PI*2) / numberOfCorners;
-						var center = frameSize/2;
-						for(var index = 0; index < numberOfCorners; index++){
-							var dir = cornerAngle * index;
-							var x = Math.sin(dir)*imageSizeHalf + center;
-							var y = -Math.cos(dir)*imageSizeHalf + center;
-							cornerList.push({x, y});
-						}
-						break;
-					case 1:	// Random pos
-						for(var index = 0; index < numberOfCorners; index++){
-							var x = Math.floor(Math.random() * frameSize);
-							var y = Math.floor(Math.random() * frameSize);
-							cornerList.push({x, y});
-						}
-						break;
-					case 2:	// Random angle
-						var center = frameSize/2;
-						for(var index = 0; index < numberOfCorners; index++){
-							var dir = Math.random() * Math.PI*2;
-							var x = Math.sin(dir)*imageSizeHalf + center;
-							var y = -Math.cos(dir)*imageSizeHalf + center;
-							cornerList.push({x, y});
-						}
-						break;
+				const center = frameSize/2;;
+				const cornerList = [];
+				const imageSizeHalf = Math.floor(frameSize/2);
+				if(numberOfCorners.split){
+					document.getElementById('reloadWrapper').style.display = 'none';
+					if(numberOfCorners.includes(';')){
+						numberOfCorners.split(';').forEach(g => {
+							const c = g.split(',').map(c => parseFloat(c));
+							cornerList.push({
+								x: c[0]*imageSizeHalf + center,
+								y: -c[1]*imageSizeHalf + center
+							});
+						});
+					}else{
+						numberOfCorners.split(',').forEach(d => {
+							let dir = parseFloat(d) * (Math.PI/180);
+							while(dir < 0){
+								dir += Math.PI*2;
+							}
+							cornerList.push({
+								x: Math.sin(dir)*imageSizeHalf + center,
+								y: -Math.cos(dir)*imageSizeHalf + center
+							});
+						});
+					}
+				}else{
+					switch(cornerPlacement){
+						default:
+						case 'even':
+							const cornerAngle = (Math.PI*2) / numberOfCorners;
+							for(let index = 0; index < numberOfCorners; index++){
+								const dir = cornerAngle * index;
+								cornerList.push({
+									x: Math.sin(dir)*imageSizeHalf + center,
+									y: -Math.cos(dir)*imageSizeHalf + center
+								});
+							}
+							break;
+						case 'random-pos':
+							for(let index = 0; index < numberOfCorners; index++){
+								cornerList.push({
+									x: Math.floor(Math.random() * frameSize),
+									y: Math.floor(Math.random() * frameSize)
+								});
+							}
+							break;
+						case 'random-angle':
+							for(let index = 0; index < numberOfCorners; index++){
+								const dir = Math.random() * Math.PI*2;
+								cornerList.push({
+									x: Math.sin(dir)*imageSizeHalf + center,
+									y: -Math.cos(dir)*imageSizeHalf + center
+								});
+							}
+							break;
+					}
 				}
 				let largest_x = 0;
 				let largest_y = 0;
@@ -169,11 +261,8 @@
 					largest_x = Math.max(largest_x, corner.x);
 					largest_y = Math.max(largest_y, corner.y);
 				});
-				let ratio = 1+(imageSizeHalf-largest_x)/imageSizeHalf;
 				cornerList.forEach(corner => {
-					corner.x *= ratio;
 					corner.x += imageSizeHalf;
-					corner.y *= ratio;
 					corner.y += (frameSize-largest_y)/2;
 				});
 				return cornerList;
@@ -183,12 +272,28 @@
 	<body onload="onload()">
 		<canvas id="canvas"></canvas>
 		<div id="input-console">
+			<div id="reloadWrapper">
+				Corners <input id="numCorners" type="number" min="3" onchange="reloadChange()">
+				<br>
+				Corner placement
+				<select id="cornerPlacement" onchange="reloadChange()">
+					<option value="even">Even</option>
+					<option value="random-angle">Random angle</option>
+					<option value="random-pos">Random pos</option>
+				</select>
+				<br>
+			</div>
 			Heat mode
 			<select id="heatMode" onchange="inputChange()">
-				<option value="spectrum">Spectrum</option>
-				<option value="white">White hot</option>
-				<option value="black">Black hot</option>
+				<option value="heatmap7">7 heatmap</option>
+				<option value="heatmap5">5 heatmap</option>
+				<option value="grayscale">Gray scale</option>
+				<option value="mono">Mono</option>
 			</select>
+			<br>
+			Inverted <input id="cbxInverted" type="checkbox" onchange="inputChange()">
+			<br>
+			Background color <input id="colorBackground" type="color" oninput="inputChange(this)">
 		</div>
 	</body>
 </html>
