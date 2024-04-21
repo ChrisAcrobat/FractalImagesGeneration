@@ -26,7 +26,14 @@ this.onmessage = messageEvent => {
 		setTimeout(update, 0);
 	}
 	this.onmessage = ()=>{
-		this.postMessage({imageData: frame.flat(), max});
+		const imageData = frame.flat();
+		let min = Number.POSITIVE_INFINITY;
+		imageData.forEach(i => {
+			if(0 < i){
+				min = Math.min(min, i);
+			}
+		});
+		this.postMessage({imageData, max, min});
 	}
 	const corners = messageEvent.data.corners;
 	x = corners[0].x;

@@ -131,23 +131,17 @@
 						corners: getCorners(corners, frameSize)
 					});
 					worker.onmessage = function(e){
-						let min = e.data.max;
-						e.data.imageData.forEach(i => {
-							if(0 < i){
-								min = Math.min(min, i);
-							}
-						});
-						const diff = e.data.max - min;
+						const diff = e.data.max - e.data.min;
 						if(diff){
 							const inverted = cbxInverted.checked;
 							let rgb;
 							e.data.imageData.forEach((i, index) => {
 								index *= 4;
-								let ratio = i ? (i-min)/diff : 0;
+								let ratio = i ? (i-e.data.min)/diff : 0;
 								[...heatMode.selectedOptions].forEach(o => {
 									switch(o.value){
 										default:
-										case 'heatmap7':
+										case '7colors':
 											if(ratio < 1/7){
 												ratio /= 1/7;
 												rgb = [255*ratio, 0, 0];
@@ -163,7 +157,7 @@
 											imageData.data[index+1] = rgb[1];
 											imageData.data[index+2] = rgb[2];
 											break;
-										case 'heatmap5':
+										case '5colors':
 											rgb = hslToRgb(ratio, 1, .5);
 											imageData.data[index] = rgb[0];
 											imageData.data[index+1] = rgb[1];
@@ -285,8 +279,8 @@
 			</div>
 			Heat mode
 			<select id="heatMode" onchange="inputChange()">
-				<option value="heatmap7">7 heatmap</option>
-				<option value="heatmap5">5 heatmap</option>
+				<option value="7colors">7 colors</option>
+				<option value="5colors">5 colors</option>
 				<option value="grayscale">Gray scale</option>
 				<option value="mono">Mono</option>
 			</select>
