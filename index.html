@@ -20,6 +20,9 @@
 				align-self: center;
 				justify-self: center;
 			}
+			#canvasDisplacementMap {
+			display: none;
+			}
 			#input-console{
 				position: absolute;
 				bottom: 0px;
@@ -32,22 +35,25 @@
 				opacity: 1;
 			}
 		</style>
+		<script src="three.min.js"></script>
+		<script src="OrbitControls.depricated.js"></script>
 		<script>
 			'use strict'
 			const urlSearchParams = new URLSearchParams(window.location.search);
 			const corners = (()=>{
+				const _default = 5;
 				const c = urlSearchParams.get('corners');
 				if(c){
 					if(c.includes(',')){
 						return c;
 					}
-					return Math.max(3, parseInt(c ?? -1));
+					return Math.max(3, parseInt(c ?? _default));
 				}
-				return 3;
+				return _default;
 			})();
-			const cornerPlacement = urlSearchParams.get('cornerPlacement') ?? 'even';
+			const placement = urlSearchParams.get('placement') ?? 'even';
 			if(window.location.search === ''){
-				window.location.search = 'corners='+(localStorage.getItem('corners') ?? corners)+'&cornerPlacement='+(localStorage.getItem('cornerPlacement') ?? cornerPlacement);
+				window.location.search = 'corners='+(localStorage.getItem('corners') ?? corners)+'&placement='+(localStorage.getItem('placement') ?? placement);
 			}
 			let x, y;
 			function inputChange(event){
@@ -59,142 +65,143 @@
 					localStorage.setItem('heatMode', o.value);
 				});
 				localStorage.setItem('cbxInverted', cbxInverted.checked);
+				localStorage.setItem('cbx3d', cbx3d.checked);
+				localStorage.setItem('scale3d', scale3d.valueAsNumber);
+				localStorage.setItem('segments', segments.valueAsNumber);
+				document.getElementById('segments-value').innerHTML = segments.valueAsNumber;
+				if(cbx3d.checked){
+					canvas.style.display = 'none';
+					canvasThree.style.display = '';
+				}else{
+					canvas.style.display = '';
+					canvasThree.style.display = 'none';
+				}
 			}
 			function reloadChange(){
 				const numCorners = document.getElementById('numCorners');
-				const selectCornerPlacement = document.getElementById('cornerPlacement');
-				let cornerPlacement;
-				[...selectCornerPlacement.selectedOptions].forEach(o => {
-					cornerPlacement = o.value;
+				const selectPlacement = document.getElementById('placement');
+				let placement;
+				[...selectPlacement.selectedOptions].forEach(o => {
+					placement = o.value;
 				});
-				if(!cornerPlacement){
-					cornerPlacement = 'even';
+				if(!placement){
+					placement = 'even';
 				}
-				localStorage.setItem('cornerPlacement', cornerPlacement);
+				localStorage.setItem('placement', placement);
 				localStorage.setItem('corners', numCorners.value);
-				window.location.search = 'corners='+numCorners.value+'&cornerPlacement='+cornerPlacement;
-			}
-			function hslToRgb(h, s, l){ // Source: https://github.com/optimisme/javascript-temperatureMap/blob/ba64de1931b5c33bbc0171629364ae9ec06dc97c/temperatureMap.js#L57
-				let r, g, b, hue2rgb, q, p;
-				if(s === 0){
-					r = g = b = l;
-				}else{
-					hue2rgb = function hue2rgb(p, q, t){
-						if(t < 0){
-							t += 1;
-						}else if (t > 1){
-							t -= 1;
-						}
-						if(t >= 0.66){
-							return p;
-						}else if(t >= 0.5){
-							return p + (q - p) * (0.66 - t) * 6;
-						}else if (t >= 0.33){
-							return q;
-						}else{
-							return p + (q - p) * 6 * t;
-						}
-					};
-					q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-					p = 2 * l - q;
-					r = hue2rgb(p, q, h + 0.33);
-					g = hue2rgb(p, q, h);
-					b = hue2rgb(p, q, h - 0.33);
-				}
-				return [(r * 255) | 0, (g * 255) | 0, (b * 255) | 0]; // (x << 0) = Math.floor(x)
+				window.location.search = 'corners='+numCorners.value+'&placement='+placement;
 			}
 			function onload(){
+				let post;
 				const frameSize = Math.min(document.body.offsetWidth, document.body.offsetHeight);
 				const canvas = document.getElementById('canvas');
 				canvas.width = frameSize;
 				canvas.height = frameSize;
+				const canvasThree = document.getElementById('canvasThree');
+				canvasThree.width = document.body.offsetWidth;
+				canvasThree.height = document.body.offsetHeight;
+				const canvasDisplacementMap = document.getElementById('canvasDisplacementMap');
+				canvasDisplacementMap.width = frameSize;
+				canvasDisplacementMap.height = frameSize;
 				const canvasContext = canvas.getContext('2d');
+				const canvasDisplacementMapContext = canvasDisplacementMap.getContext('2d');
 				const inputConsole = document.getElementById('input-console');
-				const imageData = canvasContext.getImageData(0, 0, frameSize, frameSize);
 				const numCorners = document.getElementById('numCorners');
-				const selectCornerPlacement = document.getElementById('cornerPlacement');
+				const selectPlacement = document.getElementById('placement');
 				const cbxInverted = document.getElementById('cbxInverted');
+				const cbx3d = document.getElementById('cbx3d');
+				const scale3d = document.getElementById('scale3d');
+				const segments = document.getElementById('segments');
 				const backgroundColorSelector = document.getElementById('colorBackground');
 				const heatMode = document.getElementById('heatMode');
 				numCorners.value = corners.split ? corners.split(',').length : corners;
-				[...selectCornerPlacement.options].forEach(o => {
-					o.selected = localStorage.getItem('cornerPlacement') === o.value;
+				[...selectPlacement.options].forEach(o => {
+					o.selected = localStorage.getItem('placement') === o.value;
 				});
 				[...heatMode.options].forEach(o => {
 					o.selected = localStorage.getItem('heatMode') === o.value;
 				});
 				cbxInverted.checked = localStorage.getItem('cbxInverted') === 'true';
-				document.body.style.backgroundColor = backgroundColorSelector.value = localStorage.getItem('backgroundColor') ?? '#000000';
-				if(window.Worker){
-					const worker = new Worker('worker.js');
-					worker.postMessage({
-						frameSize,
-						corners: getCorners(corners, frameSize)
-					});
-					worker.onmessage = function(e){let min = e.data.max;
-						e.data.imageData.forEach(i => {
-							if(0 < i){
-								min = Math.min(min, i);
-							}
-						});
-						const diff = e.data.max - min;
-						if(diff && getComputedStyle(inputConsole).opacity === '0'){
-							const inverted = cbxInverted.checked;
-							let rgb;
-							e.data.imageData.forEach((i, index) => {
-								index *= 4;
-								let ratio = i ? (i-min)/diff : 0;
-								[...heatMode.selectedOptions].forEach(o => {
-									switch(o.value){
-										default:
-										case '7colors':
-											if(ratio < 1/7){
-												ratio /= 1/7;
-												rgb = [255*ratio, 0, 0];
-											}else if(6/7 <= ratio){
-												ratio = Math.abs(ratio-1);
-												ratio /= 1/7;
-												rgb = [255*ratio, 255*ratio, 255];
-											}else{
-												ratio = (ratio - 1/7)/(5/7);
-												rgb = hslToRgb(ratio, 1, .5);
-											}
-											imageData.data[index] = rgb[0];
-											imageData.data[index+1] = rgb[1];
-											imageData.data[index+2] = rgb[2];
-											break;
-										case '5colors':
-											rgb = hslToRgb(ratio, 1, .5);
-											imageData.data[index] = rgb[0];
-											imageData.data[index+1] = rgb[1];
-											imageData.data[index+2] = rgb[2];
-											break;
-										case 'grayscale':
-											imageData.data[index] =
-											imageData.data[index+1] =
-											imageData.data[index+2] = Math.round(ratio*255);
-											break;
-										case 'mono':
-											imageData.data[index] =
-											imageData.data[index+1] =
-											imageData.data[index+2] = ratio ? 255 : 0;
-											break;
-									}
-									if(inverted){
-										imageData.data[index] = 255-imageData.data[index];
-										imageData.data[index+1] = 255-imageData.data[index+1];
-										imageData.data[index+2] = 255-imageData.data[index+2];
-									}
-								});
-								imageData.data[index+3] = i ? 255 : 0;
-							})
-							canvasContext.putImageData(imageData, 0, 0);
-						}
-						window.requestAnimationFrame(()=>{worker.postMessage(null)});
-					};
-				}else{
-					document.body.innerHTML = 'No support for Web Workers.<br>' + document.body.innerHTML;
+				let v = parseInt(localStorage.getItem('scale3d'));
+				if(isNaN(v)){
+					v = 100;
 				}
+				scale3d.valueAsNumber = v;
+				segments.max = frameSize;
+				v = parseInt(localStorage.getItem('segments'));
+				if(isNaN(v)){
+					v = segments.max;
+				}
+				segments.valueAsNumber = v;
+				cbx3d.checked = localStorage.getItem('cbx3d') === 'true';
+
+				const scene = new THREE.Scene();
+				scene.add(new THREE.DirectionalLight(0xffffff, 3));
+				const material = new THREE.MeshStandardMaterial({
+					transparent: true,
+					map: new THREE.CanvasTexture(canvas),
+					displacementMap: new THREE.CanvasTexture(canvasDisplacementMap)
+				});
+				const planeMesh = new THREE.Mesh((()=>new THREE.PlaneGeometry(frameSize, frameSize))(), material);
+				planeMesh.rotation.x = -Math.PI / 2;
+				scene.add(planeMesh);
+				const renderer = new THREE.WebGLRenderer({canvas: canvasThree});
+				const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, Number.MAX_SAFE_INTEGER);
+				camera.position.z = camera.position.y = Math.min(document.body.offsetWidth, document.body.offsetHeight);
+				const controls = new THREE.OrbitControls(camera, renderer.domElement);
+				renderer.setPixelRatio(window.devicePixelRatio);
+				window.onresize = ()=>{
+					renderer.setSize(window.innerWidth, window.innerHeight);
+					camera.aspect = window.innerWidth / window.innerHeight;
+					camera.updateProjectionMatrix();
+				}
+				window.onresize();
+
+				inputChange();
+				document.body.style.backgroundColor = backgroundColorSelector.value = localStorage.getItem('backgroundColor') ?? '#000000';
+
+				function animate(){
+					renderer.render(scene, camera);
+					if(post){
+						worker.postMessage({
+							heatMode: [...heatMode.selectedOptions].map(o=>o.value),
+							cbxInverted: cbxInverted.checked,
+							cbx3d: cbx3d.checked
+						});
+					}
+					window.requestAnimationFrame(animate);
+				}
+				window.requestAnimationFrame(animate);
+				const worker = new Worker('worker.js');
+				worker.postMessage({
+					corners: getCorners(corners, frameSize),
+					imageData: canvasContext.getImageData(0, 0, frameSize, frameSize),
+					displacementMap: canvasDisplacementMapContext.getImageData(0, 0, frameSize, frameSize),
+				});
+				worker.onmessage = messageEvent => {
+					post = true;
+					if(!messageEvent.data){
+						return;
+					}
+					canvasContext.putImageData(messageEvent.data.texture, 0, 0);
+					if(messageEvent.data.displacementMap){
+						const scale = frameSize*(scale3d.valueAsNumber/100);
+						if(material.displacementScale != scale){
+							material.displacementScale = scale;
+							material.displacementBias = -scale/3;
+						}
+						canvasDisplacementMapContext.putImageData(messageEvent.data.displacementMap, 0, 0);
+						material.needsUpdate = true;
+						material.map.needsUpdate = true;
+						material.displacementMap.needsUpdate = true;
+						const s = Math.min(frameSize, segments.valueAsNumber);
+						if(planeMesh.geometry.parameters.widthSegments != s){
+							const newGeometry = new THREE.PlaneGeometry(frameSize, frameSize, s, s);
+							planeMesh.geometry.dispose();
+							planeMesh.geometry = newGeometry;
+						}
+					}
+				};
 			}
 			function getCorners(numberOfCorners, frameSize){
 				const center = frameSize/2;;
@@ -223,7 +230,7 @@
 						});
 					}
 				}else{
-					switch(cornerPlacement){
+					switch(placement){
 						default:
 						case 'even':
 							const cornerAngle = (Math.PI*2) / numberOfCorners;
@@ -271,12 +278,14 @@
 	</head>
 	<body onload="onload()">
 		<canvas id="canvas"></canvas>
+		<canvas id="canvasThree"></canvas>
+		<canvas id="canvasDisplacementMap"></canvas>
 		<div id="input-console">
 			<div id="reloadWrapper">
 				Corners <input id="numCorners" type="number" min="3" onchange="reloadChange()">
 				<br>
 				Corner placement
-				<select id="cornerPlacement" onchange="reloadChange()">
+				<select id="placement" onchange="reloadChange()">
 					<option value="even">Even</option>
 					<option value="random-angle">Random angle</option>
 					<option value="random-pos">Random pos</option>
@@ -292,6 +301,12 @@
 			</select>
 			<br>
 			Inverted <input id="cbxInverted" type="checkbox" onchange="inputChange()">
+			<br>
+			3D view <input id="cbx3d" type="checkbox" onchange="inputChange()">
+			<br>
+			3D scale % <input id="scale3d" type="number" min="1" onchange="inputChange()">
+			<br>
+			3D segments <input id="segments" type="range" min="1" oninput="inputChange()"> <span id="segments-value"></span>
 			<br>
 			Background color <input id="colorBackground" type="color" oninput="inputChange(this)">
 		</div>
