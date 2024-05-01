@@ -1,4 +1,4 @@
-This is an extract from old resume like project that has not been online for years. It's now live on [GitHub Pages](https://chrisacrobat.github.io/FractalImagesGeneration/?corners=3&cornerPlacement=0), go there to see it in action.
+This is an extract from old resume like project that has not been online for years. It's now live on [GitHub Pages](https://chrisacrobat.github.io/FractalImagesGeneration/?corners=3&placement=0), go there to see it in action.
 
 _Hint: There is a secret menu in the lower right corner where different heatmap modes can be selected._
 | ![Heatmap illustration from andrewnoske.com.](heatmap.png) |
