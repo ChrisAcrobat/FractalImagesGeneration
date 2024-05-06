@@ -71,6 +71,7 @@
 				localStorage.setItem('cbx3d', cbx3d.checked);
 				localStorage.setItem('scale3d', scale3d.valueAsNumber);
 				localStorage.setItem('segments', segments.valueAsNumber);
+				localStorage.setItem('rotationSpeed', rotationSpeed.valueAsNumber);
 				document.getElementById('segments-value').innerHTML = segments.valueAsNumber;
 				if(cbx3d.checked){
 					canvas.style.display = 'none';
@@ -115,6 +116,7 @@
 				const cbx3d = document.getElementById('cbx3d');
 				const scale3d = document.getElementById('scale3d');
 				const segments = document.getElementById('segments');
+				const rotationSpeed = document.getElementById('rotationSpeed');
 				const backgroundColorSelector = document.getElementById('colorBackground');
 				const heatMode = document.getElementById('heatMode');
 				numCorners.value = corners.split ? corners.split(',').length : corners;
@@ -136,6 +138,11 @@
 					v = segments.max;
 				}
 				segments.valueAsNumber = v;
+				v = parseInt(localStorage.getItem('rotationSpeed'));
+				if(isNaN(v)){
+					v = 1;
+				}
+				rotationSpeed.valueAsNumber = v;
 				cbx3d.checked = localStorage.getItem('cbx3d') === 'true';
 
 				const scene = new THREE.Scene();
@@ -152,6 +159,7 @@
 				const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, Number.MAX_SAFE_INTEGER);
 				camera.position.z = camera.position.y = Math.min(document.body.offsetWidth, document.body.offsetHeight);
 				const controls = new THREE.OrbitControls(camera, renderer.domElement);
+				controls.autoRotate = true;
 				renderer.setPixelRatio(window.devicePixelRatio);
 				window.onresize = ()=>{
 					renderer.setSize(window.innerWidth, window.innerHeight);
@@ -164,6 +172,7 @@
 				document.body.style.backgroundColor = backgroundColorSelector.value = localStorage.getItem('backgroundColor') ?? '#000000';
 
 				function animate(){
+					controls.update()
 					renderer.render(scene, camera);
 					if(post){
 						worker.postMessage({
@@ -188,6 +197,7 @@
 					}
 					canvasContext.putImageData(messageEvent.data.texture, 0, 0);
 					if(messageEvent.data.displacementMap){
+						controls.autoRotateSpeed = -rotationSpeed.valueAsNumber;
 						const scale = frameSize*(scale3d.valueAsNumber/100);
 						if(material.displacementScale != scale){
 							material.displacementScale = scale;
@@ -306,6 +316,8 @@
 			Inverted <input id="cbxInverted" type="checkbox" onchange="inputChange()">
 			<br>
 			3D view <input id="cbx3d" type="checkbox" onchange="inputChange()">
+			<br>
+			Rotation speed <input id="rotationSpeed" type="number" onchange="inputChange()">
 			<br>
 			3D scale % <input id="scale3d" type="number" min="1" onchange="inputChange()">
 			<br>
