@@ -158,6 +158,18 @@
 				const renderer = new THREE.WebGLRenderer({canvas: canvasThree});
 				const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, Number.MAX_SAFE_INTEGER);
 				camera.position.z = camera.position.y = Math.min(document.body.offsetWidth, document.body.offsetHeight);
+				try{
+					const position = JSON.parse(localStorage.getItem('cameraPosition'));
+					if(Number.isFinite(position.x)){
+						camera.position.x = position.x;
+					}
+					if(Number.isFinite(position.y)){
+						camera.position.y = position.y;
+					}
+					if(Number.isFinite(position.z)){
+						camera.position.z = position.z;
+					}
+				}catch(error){}
 				const controls = new THREE.OrbitControls(camera, renderer.domElement);
 				controls.autoRotate = true;
 				renderer.setPixelRatio(window.devicePixelRatio);
@@ -167,6 +179,7 @@
 					camera.updateProjectionMatrix();
 				}
 				window.onresize();
+				window.onbeforeunload = ()=>localStorage.setItem('cameraPosition', JSON.stringify(camera.position));
 
 				inputChange();
 				document.body.style.backgroundColor = backgroundColorSelector.value = localStorage.getItem('backgroundColor') ?? '#000000';
