@@ -43,7 +43,7 @@
 		<script>
 			'use strict'
 			const urlSearchParams = new URLSearchParams(window.location.search);
-			const corners = (()=>{
+			const cornersInput = (()=>{
 				const _default = 5;
 				const c = urlSearchParams.get('corners');
 				if(c){
@@ -56,7 +56,7 @@
 			})();
 			const placement = urlSearchParams.get('placement') ?? 'even';
 			if(window.location.search === ''){
-				window.location.search = 'corners='+(localStorage.getItem('corners') ?? corners)+'&placement='+(localStorage.getItem('placement') ?? placement);
+				window.location.search = 'corners='+(localStorage.getItem('corners') ?? cornersInput)+'&placement='+(localStorage.getItem('placement') ?? placement);
 			}
 			let x, y;
 			function inputChange(event){
@@ -98,6 +98,7 @@
 			function onload(){
 				let post;
 				const frameSize = Math.min(document.body.offsetWidth, document.body.offsetHeight);
+				const center = frameSize/2;
 				const canvas = document.getElementById('canvas');
 				canvas.width = frameSize;
 				canvas.height = frameSize;
@@ -119,7 +120,7 @@
 				const rotationSpeed = document.getElementById('rotationSpeed');
 				const backgroundColorSelector = document.getElementById('colorBackground');
 				const heatMode = document.getElementById('heatMode');
-				numCorners.value = corners.split ? corners.split(',').length : corners;
+				numCorners.value = cornersInput.split ? cornersInput.split(',').length : cornersInput;
 				[...selectPlacement.options].forEach(o => {
 					o.selected = localStorage.getItem('placement') === o.value;
 				});
@@ -144,6 +145,7 @@
 				}
 				rotationSpeed.valueAsNumber = v;
 				cbx3d.checked = localStorage.getItem('cbx3d') === 'true';
+				const corners = getCorners(center, cornersInput, frameSize);
 
 				const scene = new THREE.Scene();
 				scene.add(new THREE.DirectionalLight(0xffffff, 3));
@@ -158,6 +160,26 @@
 				const renderer = new THREE.WebGLRenderer({canvas: canvasThree});
 				const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, Number.MAX_SAFE_INTEGER);
 				camera.position.z = camera.position.y = Math.min(document.body.offsetWidth, document.body.offsetHeight);
+				try{
+					const position = JSON.parse(localStorage.getItem('cameraPosition'));
+					if(Number.isFinite(position.x)){
+						camera.position.x = position.x;
+					}
+					if(Number.isFinite(position.y)){
+						camera.position.y = position.y;
+					}
+					if(Number.isFinite(position.z)){
+						camera.position.z = position.z;
+					}
+				}catch(error){}
+				let sum_x = 0;
+				let sum_y = 0;
+				corners.forEach(corner => {
+					sum_x += center - corner.x;
+					sum_y += center - corner.y;
+				});
+				planeMesh.position.x = sum_x/corners.length;
+				planeMesh.position.z = sum_y/corners.length;
 				const controls = new THREE.OrbitControls(camera, renderer.domElement);
 				controls.autoRotate = true;
 				renderer.setPixelRatio(window.devicePixelRatio);
@@ -167,6 +189,7 @@
 					camera.updateProjectionMatrix();
 				}
 				window.onresize();
+				window.onbeforeunload = ()=>localStorage.setItem('cameraPosition', JSON.stringify(camera.position));
 
 				inputChange();
 				document.body.style.backgroundColor = backgroundColorSelector.value = localStorage.getItem('backgroundColor') ?? '#000000';
@@ -186,7 +209,7 @@
 				window.requestAnimationFrame(animate);
 				const worker = new Worker('worker.js');
 				worker.postMessage({
-					corners: getCorners(corners, frameSize),
+					corners,
 					imageData: canvasContext.getImageData(0, 0, frameSize, frameSize),
 					displacementMap: canvasDisplacementMapContext.getImageData(0, 0, frameSize, frameSize),
 				});
@@ -216,10 +239,9 @@
 					}
 				};
 			}
-			function getCorners(numberOfCorners, frameSize){
-				const center = frameSize/2;;
+			function getCorners(center, numberOfCorners, frameSize){
 				const cornerList = [];
-				const imageSizeHalf = Math.floor(frameSize/2);
+				const imageSizeHalf = Math.floor(center);
 				if(numberOfCorners.split){
 					document.getElementById('reloadWrapper').style.display = 'none';
 					if(numberOfCorners.includes(';')){
